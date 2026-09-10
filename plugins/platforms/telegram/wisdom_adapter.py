@@ -82,7 +82,7 @@ class TelegramWisdomMixin:
             return
 
         if data.startswith("wi:agent:"):
-            await query.answer(text="Checking current state")
+            await query.answer(text="Gathering the necessary details")
             try:
                 def resolve():
                     from hermes_wisdom.mediation_view import resolve_surface_action
@@ -101,7 +101,7 @@ class TelegramWisdomMixin:
         if data.startswith("wi:cmd:"):
             token = data.removeprefix("wi:cmd:")
             try:
-                await query.answer(text="Checking current state…")
+                await query.answer(text="Gathering the necessary details…")
 
                 def command_action():
                     from gateway.wisdom_command import (
@@ -270,7 +270,7 @@ class TelegramWisdomMixin:
                 actions=actions,
             )
             return
-        await query.answer(text="Checking current state...")
+        await query.answer(text="Gathering the necessary details...")
         try:
             def review():
                 from hermes_wisdom.agent_led.actions import current_install_view
