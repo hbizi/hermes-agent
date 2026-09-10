@@ -356,6 +356,7 @@ async def test_native_install_retry_after_edit_failure_only_updates_completed_ca
     assert service.store.installation("skill-1")["state"] == "active"
     assert consent.resolve("org-1", shown["id"], actor, "inspect")["state"] == "completed"
     if surface == "telegram":
+        assert query.answer.call_args_list[0].kwargs["text"] == "Gathering the necessary details"
         assert any(call.kwargs.get("show_alert") for call in query.answer.call_args_list)
         query.edit_message_text.assert_not_awaited()
     else:
