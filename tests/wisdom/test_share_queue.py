@@ -200,8 +200,8 @@ def test_native_review_uploads_private_draft_and_preserves_link(sharing, monkeyp
     view = click("inspect")
     assert service.client.uploaded == 1
     assert service.client.publications == 0
-    assert any(a.label == "Review more details" and "/wisdom/review/draft-1" in a.url for a in view.actions)
-    assert view.actions[-1].label == "Share now"
+    assert any(a.label == "View More Details" and "/wisdom/review/draft-1" in a.url for a in view.actions)
+    assert view.actions[-1].label == "Share My Skill"
     assert "private draft is ready" not in view.to_text()
     current = mediation.consent.resolve("org", shown["id"], actor, "inspect")
     assert current["operation"] == "publish" and current["state"] == "pending"
@@ -209,7 +209,7 @@ def test_native_review_uploads_private_draft_and_preserves_link(sharing, monkeyp
     for action in ("review", "checks.show", "checks.hide"):
         toggled = click(action)
         actions = toggled.actions + [a for item in toggled.items for a in item.actions]
-        assert any(a.label == "Review more details" and a.url for a in actions)
+        assert any(a.label == "View More Details" and a.url for a in actions)
     assert service.client.uploaded == 1
     assert service.client.publications == 0
     assert "ORIGINAL_PRIVATE_SETUP" in (source / "SKILL.md").read_text()
@@ -422,10 +422,11 @@ def test_share_copy_and_controls_keep_publication_separate(sharing):
     _, _, _, shown, _, _, _ = sharing
     view = interaction_view(shown)
     assert [action.label for action in view.actions] == [
-        "Show checks",
-        "Prepare private review",
-        "Share later",
-        "Prepare to share",
+        "Review Checks",
+        "View More Details",
+        "Snooze Collective Wisdom",
+        "Maybe Later",
+        "Share My Skill",
     ]
     assert "Nothing is shared without your approval" not in view.to_text()
     assert view.items[0].detail.rstrip().endswith("Would you like to share it?")
@@ -494,16 +495,18 @@ def test_checks_toggle_is_read_only_and_preserves_consent(sharing, monkeypatch):
     expanded = toggle("show")
     assert "Profanity or abusive language" in expanded.to_text()
     assert "Check the wording." in expanded.to_text()
-    assert expanded.items[0].actions[0].label == "Hide checks"
+    assert expanded.items[0].actions[0].label == "Review Checks"
+    assert ":checks.hide:" in expanded.items[0].actions[0].callback_data
     collapsed = toggle("hide")
     assert "Profanity or abusive language" not in collapsed.to_text()
     assert "Needs a look before sharing at work" in collapsed.to_text()
     assert "Check the wording." not in collapsed.to_text()
     assert [a.label for a in collapsed.items[0].actions] == [
-        "Show checks",
-        "Prepare private review",
-        "Share later",
-        "Prepare to share",
+        "Review Checks",
+        "View More Details",
+        "Snooze Collective Wisdom",
+        "Maybe Later",
+        "Share My Skill",
     ]
     with pytest.raises(WisdomNotFound):
         toggle("show", "different-user")

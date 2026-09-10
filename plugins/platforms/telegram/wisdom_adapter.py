@@ -88,11 +88,21 @@ class TelegramWisdomMixin:
                     from hermes_wisdom.mediation_view import resolve_surface_action
                     from hermes_wisdom.service import WisdomService
 
-                    return resolve_surface_action(
-                        WisdomService(), data, platform="telegram", actor_id=caller_id,
+                    service = WisdomService()
+                    context = surface_context(self,
+                        user_id=caller_id, chat_id=str(query_chat_id or ""),
+                        profile=getattr(self, "_owner_profile", None),
+                        organization_id=service.store.active_org_id(),
+                        is_group=str(query_chat_type or "").lower() in {"group", "supergroup", "channel", "forum"},
+                        thread_id=str(query_thread_id or ""),
+                    )
+                    view = resolve_surface_action(
+                        service, data, platform="telegram", actor_id=caller_id,
                         chat_id=str(query_chat_id or ""), thread_id=str(query_thread_id or ""),
                     )
-                view = await self._run_wisdom_profile_operation(resolve)
+                    return view, context
+                view, context = await self._run_wisdom_profile_operation(resolve)
+                await self._prepare_wisdom_command_view(view, context)
                 await self._edit_wisdom_command_view(query, view, full_details=True)
             except Exception:
                 await query.answer(text="This control is unavailable. Open /wisdom inbox to review current state.", show_alert=True)
@@ -347,17 +357,17 @@ class TelegramWisdomMixin:
             controls = [value for action in actions if (value := button(action))]
             if not controls:
                 return ""
-            return (
-                '<tg-button-row align="left">'
-                f"{' '.join(controls)}"
-                "</tg-button-row>"
+            return "".join(
+                '<tg-button-row align="left">' + " ".join(controls[i:i + 2]) + "</tg-button-row>"
+                for i in range(0, len(controls), 2)
             )
 
         item_html: list[str] = []
         for item in view.items[:5]:
+            preamble = f"<p>{_html.escape(compact(item.preamble, 600))}</p>" if item.preamble else ""
             candidate = (
-                f"<p><b>{_html.escape(compact(item.title, 140))}</b>"
-                f"<br/>{_html.escape(item.detail if full_details else compact(item.detail, 300)).replace(chr(10), '<br/>')}"
+                preamble + f"<p><b>{_html.escape(compact(item.title, 140))}</b>"
+                f"<br/>{_html.escape(item.detail if full_details else compact(item.detail, 300)).replace(chr(10) + '  ', '<br/>&nbsp;&nbsp;').replace(chr(10), '<br/>')}"
                 "</p>"
                 f"{button_row(item.actions)}"
             )
