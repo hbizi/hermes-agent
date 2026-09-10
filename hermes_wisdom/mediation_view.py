@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from gateway.wisdom_command import WisdomAction, WisdomItem, WisdomView, _NavigationTarget
 from .consent import ConsentActor, WisdomConsent
-from .review_presentation import review_card_text
+from .review_presentation import review_card_text, sharing_checks_passed
 
 _SETUP_COMMAND_LABEL = "Proposed command (local terminal)"
 
@@ -29,38 +29,47 @@ def _checks_action(identity: str, expanded: bool) -> WisdomAction:
     )
 
 
-def _share_review_view(result: dict, *, checks_expanded: bool = False) -> WisdomView:
+def _share_review_view(result: dict, *, checks_expanded: bool = False, assessment_available: bool = True) -> WisdomView:
     """Keep chat concise without changing exact-package consent or upload intent."""
     facts = result["facts"]
     ready = result["operation"] == "publish"
     portal_url = (result.get("result") or {}).get("portal_url")
-    security = facts.get("security_check") or {}
-    security_status = security.get("local_status") if security.get("source") == "local_preflight" else security.get("status")
-    needs_attention = security_status != "pass" or (facts.get("professionalism_check") or {}).get("status") != "pass"
+    current = not result.get("deferred") and assessment_available
     detail = str(facts.get("editorial_description") or "")
     if checks_expanded and facts.get("file_names"):
         detail += "\nPackage files: " + ", ".join(facts["file_names"])
-    if checks_expanded or not portal_url or needs_attention:
-        detail += "\n\n" + review_card_text(facts, checks_expanded)
+    detail += "\n\n" + review_card_text(facts, checks_expanded, current=current)
+    if current and not portal_url:
+        detail += (
+            "\n\nView More Details reviews the exact local package without uploading. "
+            "Share My Skill authorizes this package for upload and sharing after required checks."
+            if ready else
+            "\n\nView More Details authorizes preparation and upload of a private Portal draft, not publication. "
+            "Share My Skill prepares a local package for your review before sharing."
+        )
     if not ready and not result.get("deferred"):
         detail += "\n\nWould you like to share it?"
-    actions = [] if ready else [_checks_action(result["id"], checks_expanded)]
+    checks = _checks_action(result["id"], checks_expanded)
+    checks.label = "✅ Safe To Share" if current and sharing_checks_passed(facts) else "Review Checks"
+    actions = [checks]
     allowed = result["actions"] if not result.get("deferred") else []
     if "inspect" in allowed:
         if portal_url:
-            actions.append(WisdomAction("Review more details", url=portal_url))
+            actions.append(WisdomAction("View More Details", url=portal_url))
         else:
             # A local package has no Portal URL until upload is authorized.
             # File inspection is read-only; initial review explicitly prepares a private draft.
             actions.append(WisdomAction(
-                "Review package" if ready else "Prepare private review",
+                "View More Details",
                 callback_data=f"wi:agent:{'inspect.0' if ready else 'review'}:{result['id']}",
             ))
+    if current:
+        actions.append(WisdomAction("Snooze Collective Wisdom", "mute", local_command="/wisdom mute"))
     if "defer" in allowed:
-        actions.append(WisdomAction("Share later", callback_data=f"wi:agent:defer:{result['id']}"))
+        actions.append(WisdomAction("Maybe Later", callback_data=f"wi:agent:defer:{result['id']}"))
     if "confirm" in allowed:
         actions.append(WisdomAction(
-            "Share now" if ready else "Prepare to share",
+            "Share My Skill",
             callback_data=f"wi:agent:confirm:{result['id']}", primary=True,
         ))
     return WisdomView(
@@ -153,11 +162,22 @@ def advice_view(
             continue
         unavailable = advice.get("assessment_status") == "unavailable"
         interaction = item.get("interaction")
-        if interaction and interaction["operation"] in {"share", "publish"} and interaction.get("state", "pending") == "pending":
-            projected = _share_review_view(interaction, checks_expanded=checks_expanded)
+        if interaction and interaction["operation"] in {"share", "publish"}:
+            if interaction.get("state", "pending") != "pending" or interaction.get("deferred"):
+                projected = interaction_view(interaction, checks_expanded=checks_expanded)
+                projected.items[0].actions = projected.actions
+                view.items.extend(projected.items)
+                view.summary = projected.summary
+                continue
+            projected = _share_review_view(interaction, checks_expanded=checks_expanded, assessment_available=not unavailable)
             card = projected.items[0]
             if interaction["operation"] == "share":
-                card.detail = advice["explanation"] + "\n\n" + card.detail
+                # Project historical saved qualification copy without rewriting the record.
+                card.preamble = (
+                    "Hermes thinks the following skill would be useful to the rest of your team:"
+                    if advice["explanation"] == "Hermes identified this local skill as a sharing candidate."
+                    else advice["explanation"]
+                )
             card.title = advice["title"] + (f" · local v{interaction['facts']['local_version']}" if interaction["facts"].get("local_version") else "")
             card.actions = [a for a in projected.actions if not (unavailable and a.primary)]
             view.items.append(card)
@@ -245,6 +265,8 @@ def advice_view(
         if interaction and interaction["facts"].get("local_version"):
             title += f" · local v{interaction['facts']['local_version']}"
         view.items.append(WisdomItem(title=title, detail=detail, actions=actions))
+    if any(a.operation == "mute" for card in view.items for a in card.actions):
+        view.actions = [a for a in view.actions if a.operation != "mute"]
     if has_digest:
         view.notice = "Nothing has been changed. Use /wisdom notifications to review these skills."
     return view
@@ -545,7 +567,9 @@ def interaction_view(
         detail += "\nPackage files: " + ", ".join(facts["file_names"])
     actions = []
     if facts.get("security_check") or facts.get("professionalism_check"):
-        detail += "\n\n" + review_card_text(facts, checks_expanded)
+        detail += "\n\n" + review_card_text(
+            facts, checks_expanded, current=result["state"] == "pending" and not result.get("deferred"),
+        )
         actions.append(_checks_action(result["id"], checks_expanded))
     if (
         result["operation"] == "share"

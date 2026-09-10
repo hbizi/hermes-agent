@@ -66,8 +66,41 @@ def aggregate_review_text(
     )
 
 
-def review_card_text(facts: dict[str, Any], expanded: bool = False) -> str:
+def sharing_checks_passed(facts: dict[str, Any]) -> bool:
+    """Summarize only complete saved evidence, never infer success from missing rows."""
+    security = facts.get("security_check") or {}
+    professionalism = facts.get("professionalism_check") or {}
+    if security.get("status") != "pass" or professionalism.get("status") != "pass":
+        return False
+    if security.get("source") == "local_preflight" and security.get("local_status") != "pass":
+        return False
+    if security.get("upload_allowed") is False:
+        return False
+    required_security = (
+        {"private_keys", "live_credentials", "secret_assignments", "skills_guard"}
+        if security.get("source") == "local_preflight" else
+        {"private_keys", "live_credentials", "organization_policy", "personal_information", "secret_like_assignments"}
+    )
+    for check, required in ((security, required_security), (professionalism, set(CHECK_LABELS))):
+        rows = check.get("checks")
+        if not isinstance(rows, list) or not rows:
+            return False
+        if any(not isinstance(row, dict) or row.get("status") != "pass"
+               or row.get("finding_count") != 0 for row in rows):
+            return False
+        keys = [row.get("key") for row in rows]
+        if len(set(keys)) != len(keys) or not required.issubset(keys):
+            return False
+    return True
+
+
+def review_card_text(facts: dict[str, Any], expanded: bool = False, *, current: bool = True) -> str:
     """Keep native cards compact while making both full checklists accessible."""
+    if current and sharing_checks_passed(facts):
+        if not expanded:
+            return "✅ Safe To Share (security and professionalism checks all passed)"
+        details = full_review_text(facts["security_check"], facts["professionalism_check"])
+        return "✅ Safe To Share\n" + "\n".join("  " + line if line else "" for line in details.splitlines())
     if expanded:
         return full_review_text(
             facts.get("security_check"), facts.get("professionalism_check"),

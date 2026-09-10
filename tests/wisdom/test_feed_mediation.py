@@ -134,10 +134,11 @@ def test_qualified_candidate_uses_professionalism_not_installation_assessor(
     assert groups == [items]
     view = advice_view(groups[0])
     assert [a.label for a in view.items[0].actions] == [
-        "Show checks",
-        "Prepare private review",
-        "Share later",
-        "Prepare to share",
+        "Review Checks",
+        "View More Details",
+        "Snooze Collective Wisdom",
+        "Maybe Later",
+        "Share My Skill",
     ]
     assert view.items[0].actions[-1].primary
     assert "consistently across many days" in view.to_text()
