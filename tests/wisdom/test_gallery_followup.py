@@ -24,6 +24,7 @@ def test_packaging_failure_has_no_notification_settings():
                        "explanation": "Nothing was uploaded or published."}}
     view = advice_view([item])
     assert view.summary == "Share Packaging failed"
+    assert view.to_text().count("Share Packaging failed") == 1
     assert not view.actions and not view.items[0].actions
     ordinary = {"assessment": {"reference": {"kind": "notice"}},
                 "advice": {"title": "Activity", "relevance": "digest", "explanation": "Team activity."}}

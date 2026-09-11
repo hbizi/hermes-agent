@@ -150,7 +150,7 @@ def advice_view(
         if item.get("assessment", {}).get("reference", {}).get("notice_kind") == "share_packaging_failed":
             view.summary = "Share Packaging failed"
             view.actions = []
-            view.items.append(WisdomItem(title=advice["title"], detail=advice["explanation"]))
+            view.items.append(WisdomItem(title="", detail=advice["explanation"]))
             continue
         if advice.get("assessment_kind") == "operation_receipt":
             view.summary = advice["operation_label"]
