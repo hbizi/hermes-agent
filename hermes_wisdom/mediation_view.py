@@ -169,7 +169,10 @@ def advice_view(
         interaction = item.get("interaction")
         if interaction and interaction["operation"] in {"install", "update"} and interaction.get("state", "pending") == "pending":
             from .recipient_view import recommendation_item, recommendation_summary
-            view.summary = recommendation_summary(interaction["operation"], item.get("organization_name"))
+            if unavailable:
+                view.summary = "Assessment unavailable"
+            elif not introduction:
+                view.summary = recommendation_summary(interaction["operation"], item.get("organization_name"))
             view.items.append(recommendation_item(interaction, advice, expanded=assessment_expanded or checks_expanded))
             continue
         if interaction and interaction["operation"] in {"share", "publish"}:
@@ -196,7 +199,7 @@ def advice_view(
                     "Your skill is ready for sharing."
                     if interaction["operation"] == "publish" and "confirm" in interaction["actions"] and not unavailable
                     else "Your skill needs a review" if interaction["operation"] == "publish"
-                    else "" if card.preamble
+                    else "" if card.preamble == "Hermes thinks the following skill would be useful to the rest of your team:"
                     else "You created a skill that could help your team"
                 )
             continue
@@ -537,6 +540,16 @@ def interaction_view(
         )
     if result["operation"] in {"share", "publish"} and result["state"] == "pending":
         return _share_review_view(result, checks_expanded=checks_expanded)
+    if result["operation"] in {"install", "update"} and result["state"] == "pending" and not result.get("deferred"):
+        from .recipient_view import recommendation_item, recommendation_summary
+        facts = result["facts"]
+        advice = result.get("assessment") or {
+            "title": str(facts.get("editorial_name") or facts.get("slug") or "Skill details"),
+            "explanation": str(facts.get("editorial_description") or "Review this exact skill version before installing."),
+        }
+        card = recommendation_item(result, advice, expanded=True)
+        actions, card.actions = card.actions, []
+        return WisdomView("Hermes Collective Wisdom", recommendation_summary(result["operation"]), items=[card], actions=actions)
     facts = result["facts"]
     detail = str(facts.get("editorial_description") or "")
     if facts.get("version"):

@@ -513,24 +513,9 @@ class TelegramWisdomMixin:
 
         message = getattr(query, "message", None)
         raw_request = getattr(getattr(self, "_bot", None), "do_api_request", None)
-        if view._dismissed and message is not None and callable(raw_request):
-            import re
-            rich = getattr(message, "rich_message", None)
-            if rich is None:
-                rich = (getattr(message, "api_kwargs", None) or {}).get("rich_message")
-            mapped = self._wisdom_api_mapping(rich)
-            if mapped and isinstance(mapped.get("html"), str):
-                preserved = re.sub(r"<tg-button-row\b[^>]*>.*?</tg-button-row>|<tg-button\b[^>]*>.*?</tg-button>", "", mapped["html"], flags=re.DOTALL)
-                await raw_request("editMessageText", api_kwargs={
-                    "chat_id": normalize_telegram_chat_id(message.chat_id), "message_id": int(message.message_id),
-                    "rich_message": {"html": preserved}, "reply_markup": {"inline_keyboard": []},
-                })
-                return
-            if getattr(message, "text", None):
-                await raw_request("editMessageReplyMarkup", api_kwargs={
-                    "chat_id": normalize_telegram_chat_id(message.chat_id), "message_id": int(message.message_id),
-                    "reply_markup": {"inline_keyboard": []},
-                })
+        if view._dismissed:
+            from .wisdom_dismiss import dismiss_original
+            if await dismiss_original(self, query):
                 return
         if message is not None and callable(raw_request):
             try:

@@ -59,3 +59,20 @@ async def test_dismiss_keeps_original_text_and_removes_every_control():
     sent = client.chat_update.call_args.kwargs
     assert sent["text"] == "Original history"
     assert sent["blocks"] == body["message"]["blocks"][:1]
+
+
+@pytest.mark.asyncio
+async def test_dismiss_structured_telegram_card_preserves_content_and_retry():
+    from gateway.wisdom_command import WisdomView
+    from telegram.error import BadRequest
+    adapter = _adapter()
+    view = WisdomView("Fallback", _dismissed=True)
+    rich = {"blocks": [{"text": "Exact history"}, {"buttons": [{"text": "Share", "callback_data": "x"}]}]}
+    query = SimpleNamespace(message=SimpleNamespace(chat_id=42, message_id=19, rich_message=rich))
+    await adapter._edit_wisdom_command_view(query, view)
+    sent = adapter._bot.do_api_request.call_args.kwargs["api_kwargs"]["rich_message"]
+    assert sent["blocks"][0] == rich["blocks"][0]
+    assert "callback_data" not in str(sent)
+    assert "callback_data" in str(rich)
+    adapter._bot.do_api_request.side_effect = BadRequest("Message is not modified")
+    await adapter._edit_wisdom_command_view(query, view)

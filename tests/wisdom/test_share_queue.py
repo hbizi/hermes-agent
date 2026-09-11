@@ -549,11 +549,11 @@ def test_install_update_review_collapses_rows_without_hiding_warnings(sharing, o
     assert "⚠️ Security check: Advisory" in collapsed.to_text()
     assert "Review the policy finding." in collapsed.to_text()
     assert "Organization policy" in collapsed.to_text()
-    assert collapsed.actions[0].label == "Show checks"
+    assert collapsed.actions[0].label == "View Details"
     assert collapsed.actions[-1].primary
     expanded = interaction_view(shown, checks_expanded=True)
     assert "⚠️ Organization policy: Advisory" in expanded.to_text()
-    assert expanded.actions[0].label == "Hide checks"
+    assert expanded.actions[0].label == "View Details"
 def test_private_review_pages_cover_exact_files_without_consuming_consent(sharing):
     service, mediation, actor, shown, _, _, _ = sharing
     mediation.consent.resolve("org", shown["id"], actor, "confirm")
@@ -571,9 +571,9 @@ def test_private_review_pages_cover_exact_files_without_consuming_consent(sharin
         assert result["state"] == "pending"
         assert len(inspection["content"]) <= 1000
         view = interaction_view(result)
-        assert view.actions[-1].primary
-        assert view.actions[-1].callback_data == f"wi:agent:confirm:{identity}"
-        assert f"/wisdom consent {identity} confirm" in view.to_local_text()
+        assert not view.actions[-1].primary
+        assert view.actions[-1].callback_data == f"wi:agent:back:{identity}"
+        assert f"/wisdom consent {identity} confirm" not in view.to_local_text()
     prepared = service.prepare_candidate(item["assessment"]["reference"]["event_id"])[
         "prepared"
     ]
@@ -591,7 +591,7 @@ def test_private_review_pages_cover_exact_files_without_consuming_consent(sharin
         mediation.consent.resolve("org", identity, actor, "inspect.999")
 
 
-@pytest.mark.parametrize("control", ["Back to first page", "Not Now"])
+@pytest.mark.parametrize("control", ["Back to first page", "Looks good."])
 def test_package_review_controls_never_upload_and_preserve_review(sharing, monkeypatch, control):
     from hermes_wisdom.mediation_view import resolve_surface_action
 
@@ -618,13 +618,12 @@ def test_package_review_controls_never_upload_and_preserve_review(sharing, monke
         actor_id=actor.actor_id, **actor.address,
     )
     assert service.client.uploaded == service.client.publications == 0
-    if control == "Not Now":
-        assert returned.summary == "Deferred on this surface"
-        assert not any(action.primary for action in returned.actions)
+    if control == "Looks good.":
+        assert returned.summary == "Ready For Review"
         with service.store.transaction() as db:
             assert db.execute(
                 "SELECT interaction_id FROM wisdom_consent_defer WHERE interaction_id=?", (identity,)
-            ).fetchone()[0] == identity
+            ).fetchone() is None
     else:
         assert returned.summary.endswith("1/" + str(reviewed["inspection"]["page_count"]))
     reopened = mediation.consent.resolve("org", identity, actor, "inspect.0")

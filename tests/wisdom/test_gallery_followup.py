@@ -13,6 +13,8 @@ def test_share_heading_does_not_repeat_the_rationale():
     assert view.summary == ""
     assert view.items[0].preamble
     assert "Share a useful skill" not in view.to_text()
+    weekly = advice_view([recommendation(current, explanation="Used across several days.")])
+    assert weekly.summary == "You created a skill that could help your team"
 
 
 def test_packaging_failure_has_no_notification_settings():
@@ -83,6 +85,8 @@ def test_install_and_update_lead_with_saved_inference_and_keep_material_warnings
                 "assessment": {"reference": {"kind": "skill"}},
                 "advice": {"title": "Team notes", "relevance": "recommend",
                            "explanation": "Records decisions and helps with your weekly meeting notes."}}
+        direct = interaction_view(current)
+        assert [a.label for a in direct.actions] == ["View Details", "Not Now", "Mute Skill Recommendations", "Install Skill"]
         view = advice_view([item])
         assert item["advice"]["explanation"] in view.items[0].detail
         assert "Would you like to install this skill?" in view.items[0].detail

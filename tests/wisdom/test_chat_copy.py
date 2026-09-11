@@ -52,7 +52,7 @@ def test_local_package_and_initial_suggestion_do_not_fake_portal_or_publish():
     inspected = interaction_view(local)
     assert "# Notes" in inspected.to_text()
     assert "security certification" in inspected.to_text()
-    assert inspected.actions[-1].callback_data == "wi:agent:confirm:exact-package"
+    assert inspected.actions[-1].callback_data == "wi:agent:back:exact-package"
     initial = interaction(portal=False, operation="share")
     view = interaction_view(initial)
     assert "Share My Skill" in [a.label for a in view.actions]
