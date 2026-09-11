@@ -25,9 +25,10 @@ def process_share_package(mediation, org: str, job: dict, *, runtime) -> dict:
                 WHERE id=? AND organization_id=? AND state='fallback'
                 AND lease_token=? AND lease_until>?""",
                 (
-                    json.dumps({"kind": "notice", "user_requested": True}),
+                    json.dumps({"kind": "notice", "user_requested": True,
+                                "notice_kind": "share_packaging_failed"}),
                     json.dumps({
-                        "title": "Share preparation needs attention",
+                        "title": "Share Packaging failed",
                         "relevance": "recommend",
                         "explanation": "Hermes could not prepare this package. Nothing was uploaded or published. Use /wisdom candidates to review it manually.",
                     }),

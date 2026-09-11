@@ -103,6 +103,7 @@ class WisdomView:
     actions: list[WisdomAction] = field(default_factory=list)
     notice: str | None = None
     navigation_actions: list[WisdomAction] = field(default_factory=list)
+    _dismissed: bool = field(default=False, repr=False)
     _navigation_target: _NavigationTarget | None = field(default=None, repr=False)
     _navigation_history: tuple[_NavigationTarget, ...] = field(
         default_factory=tuple, repr=False

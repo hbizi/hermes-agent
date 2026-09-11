@@ -416,6 +416,15 @@ class SlackWisdomMixin:
     async def _update_wisdom_interaction(self, body, view) -> None:
         blocks = sanitize_blocks(render_wisdom_blocks(view)) or []
         text = wisdom_fallback_text(view)
+        original = body.get("message") or {}
+        if view._dismissed and isinstance(original.get("blocks"), list):
+            blocks = []
+            for block in original["blocks"]:
+                if block.get("type") != "actions":
+                    preserved = dict(block)
+                    preserved.pop("accessory", None)
+                    blocks.append(preserved)
+            text = original.get("text") or text
         response_url = str(body.get("response_url") or "")
         if response_url and await self._post_wisdom_response_url(
             response_url,

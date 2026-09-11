@@ -74,7 +74,7 @@ def _share_review_view(result: dict, *, checks_expanded: bool = False, assessmen
         ))
     return WisdomView(
         title="Hermes Collective Wisdom",
-        summary="Deferred on this surface" if result.get("deferred") else "Ready For Review" if ready else "Share a useful skill",
+        summary="Deferred on this surface" if result.get("deferred") else "Ready For Review" if ready else "You created a skill that could help your team",
         items=[WisdomItem(
             title=str(facts.get("editorial_name") or facts.get("slug") or "Skill details")
             + (f" · local v{facts['local_version']}" if facts.get("local_version") else ""),
@@ -132,7 +132,7 @@ def advice_view(
             "automatically detect and share useful skills across all team members."
         )
         if introduction
-        else "Share a useful skill"
+        else "You created a skill that could help your team"
         if qualification_only
         else "Hermes recommendations for your setup"
         if has_recommendation
@@ -147,6 +147,11 @@ def advice_view(
     has_digest = False
     for item in items:
         advice = item["advice"]
+        if item.get("assessment", {}).get("reference", {}).get("notice_kind") == "share_packaging_failed":
+            view.summary = "Share Packaging failed"
+            view.actions = []
+            view.items.append(WisdomItem(title=advice["title"], detail=advice["explanation"]))
+            continue
         if advice.get("assessment_kind") == "operation_receipt":
             view.summary = advice["operation_label"]
             view.items.append(WisdomItem(title=advice["title"], detail=""))
@@ -162,6 +167,11 @@ def advice_view(
             continue
         unavailable = advice.get("assessment_status") == "unavailable"
         interaction = item.get("interaction")
+        if interaction and interaction["operation"] in {"install", "update"} and interaction.get("state", "pending") == "pending":
+            from .recipient_view import recommendation_item, recommendation_summary
+            view.summary = recommendation_summary(interaction["operation"], item.get("organization_name"))
+            view.items.append(recommendation_item(interaction, advice, expanded=assessment_expanded or checks_expanded))
+            continue
         if interaction and interaction["operation"] in {"share", "publish"}:
             if interaction.get("state", "pending") != "pending" or interaction.get("deferred"):
                 projected = interaction_view(interaction, checks_expanded=checks_expanded)
@@ -186,7 +196,8 @@ def advice_view(
                     "Your skill is ready for sharing."
                     if interaction["operation"] == "publish" and "confirm" in interaction["actions"] and not unavailable
                     else "Your skill needs a review" if interaction["operation"] == "publish"
-                    else "Share a useful skill"
+                    else "" if card.preamble
+                    else "You created a skill that could help your team"
                 )
             continue
         detail = (
@@ -508,23 +519,9 @@ def interaction_view(
                         label, callback_data=f"wi:agent:inspect.{index}:{result['id']}"
                     )
                 )
-        # Keep the exact approval control available, but never turn navigation
-        # into an implicit acknowledgement or a publication request.
-        if "defer" in result["actions"]:
-            actions.append(
-                WisdomAction(
-                    "Not Now",
-                    callback_data=f"wi:agent:defer:{result['id']}",
-                )
-            )
-        if "confirm" in result["actions"]:
-            actions.append(
-                WisdomAction(
-                    "Approve exact package",
-                    callback_data=f"wi:agent:confirm:{result['id']}",
-                    primary=True,
-                )
-            )
+        # Reading is never approval. Retain pagination for complete artifacts
+        # that cannot fit in one native message; return without publication.
+        actions.append(WisdomAction("Looks good.", callback_data=f"wi:agent:back:{result['id']}"))
         return WisdomView(
             title="Review proposed package",
             summary=f"{page['path']} - {page['page'] + 1}/{page['page_count']}",
@@ -648,6 +645,28 @@ def resolve_surface_action(
     if row is None:
         raise WisdomNotFound("Wisdom interaction not found")
     actor = ConsentActor(row[0], platform, actor_id, chat_id, thread_id, scope_id)
+    current = WisdomConsent(service)._resolve(org, identity, actor, "inspect")
+    if action == "defer":
+        current = WisdomConsent(service).resolve(org, identity, actor, action)
+    if current.get("deferred"):
+        # Retain the saved recommendation as history, never a new status card.
+        with service.store.transaction() as db:
+            saved = db.execute(
+                "SELECT * FROM wisdom_assessment WHERE id=? AND organization_id=?",
+                (current["assessment_id"], org),
+            ).fetchone()
+        from .mediation_store import _decode
+        job = _decode(saved) if saved else None
+        historical = {**current, "deferred": False, "actions": []}
+        view = advice_view([{"assessment": job, "advice": job["advice"], "interaction": historical}]) if job and job.get("advice") else interaction_view(historical)
+        view.actions = []
+        view.navigation_actions = []
+        view._dismissed = True
+        for card in view.items:
+            card.actions = []
+        return view
+    if action == "back":
+        return interaction_view(current)
     if action == "inspect":
         current = WisdomConsent(service)._resolve(org, identity, actor, "inspect")
         if current["operation"] in {"share", "publish"} and current["state"] == "pending":
